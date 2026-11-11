@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pianokb</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span class="brand-dot"></span>pianokb</div>
+  <div class="head-status">
+    <span id="engine" class="pill">engine …</span>
+    <button id="restart" class="ghost">Restart engine</button>
+  </div>
+</header>
+
+<main>
+  <section class="panel player-panel" aria-live="polite">
+    <div class="now-head">
+      <span class="now-label">now playing</span>
+      <b id="now-song" class="idle">idle</b>
+      <span id="now-time" class="now-time"></span>
+    </div>
+    <div class="now-bar"><i id="now-bar"></i></div>
+    <div id="now-stems" class="now-stems"></div>
+  </section>
+
+  <section class="panel board-panel">
+    <div class="panel-head">
+      <div>
+        <h1>Keys</h1>
+        <p class="hint">Drag a key onto another to move or swap · click one, then click where it goes</p>
+      </div>
+      <div class="tools">
+        <span id="saved" class="saved">saved</span>
+        <button id="reset" class="ghost">Reset layout</button>
+      </div>
+    </div>
+    <div id="board" class="board" aria-label="Keyboard layout"></div>
+    <p id="capacity" class="capacity" hidden></p>
+    <ul id="songs" class="songs"></ul>
+    <div id="benched-wrap" class="benched-wrap" hidden>
+      <h2>Not on the board</h2>
+      <ul id="benched" class="songs benched"></ul>
+    </div>
+  </section>
+
+  <section class="panel add-panel">
+    <h1>Add a song</h1>
+    <form id="add">
+      <label class="field">Name
+        <input id="song-name" required placeholder="Song name" autocomplete="off">
+      </label>
+      <label class="field">Source
+        <select id="mode">
+          <option value="mix">Full mix — split it into stems</option>
+          <option value="link">A link — download and split</option>
+          <option value="stems">I already have stem files</option>
+        </select>
+      </label>
+      <label class="field" id="files-field">Audio
+        <input id="files" type="file" accept="audio/*,.wav,.flac,.mp3,.m4a,.aac,.ogg,.opus,.aiff,.webm" multiple required>
+      </label>
+      <label class="field" id="url-field" hidden>Link
+        <input id="url" type="url" placeholder="https://www.youtube.com/watch?v=…" autocomplete="off">
+      </label>
+      <label class="check"><input id="replace" type="checkbox"> Replace a song with this name</label>
+      <button id="add-btn" class="primary" type="submit">Add song</button>
+    </form>
+
+    <div id="job" class="job" hidden>
+      <div class="job-head"><b id="job-title">Splitting…</b><span id="job-stage"></span></div>
+      <div class="bar"><i id="job-bar"></i></div>
+      <pre id="job-log"></pre>
+    </div>
+
+    <p class="splitter" id="splitter">splitter …</p>
+  </section>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

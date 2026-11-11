@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# `keys` — open the pianokb UI (or `keys --tui` for the terminal menu).
+set -u
+
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+
+if [ "${1:-}" = "--tui" ]; then
+  shift
+  exec python3 "$HERE/map.py" "$@"
+fi
+
+exec "$HERE/ui/run" "$@"

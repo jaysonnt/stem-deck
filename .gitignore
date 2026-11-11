@@ -1,0 +1,12 @@
+# local runtime state — device choice, arranged keys, what is playing
+config.json
+keymap.json
+now_playing.json
+
+# splitter venv (installed with ui/setup-venv.sh) and python bytecode
+.venv/
+__pycache__/
+*.pyc
+
+# stray logs
+*.log

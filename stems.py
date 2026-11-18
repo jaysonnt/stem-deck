@@ -262,6 +262,7 @@ class Bank:
         self.decks = decks
         self.gain = 1.0
         self.reverse = 1        # -1 plays every deck backwards
+        self.speed = 1.0        # tape speed: pitch and tempo together (the dial)
         self.last = 0
         self.unmapped = 0
 
@@ -325,6 +326,13 @@ class Bank:
         n = len(buf)
         fade = np.float32(n / RAMP)
         back = self.reverse < 0
+        rate = float(self.speed)
+        varispeed = abs(rate - 1.0) > 1e-6
+        if varispeed:
+            # Positions read this block, as a tape would: forwards from the
+            # playhead, or backwards from just behind it.
+            steps = (np.arange(n, dtype=np.float64) + (1.0 if back else 0.0)) * rate
+            steps = -steps if back else steps
 
         for deck in self.decks:
             if not deck.length:
@@ -334,7 +342,13 @@ class Bank:
             if not deck.playing and not any(targets) and not any(gains):
                 continue
 
-            here = deck.pos
+            here = int(deck.pos)
+            if varispeed:
+                idx = deck.pos + steps
+                i0 = np.floor(idx).astype(np.int64)
+                frac = (idx - i0).astype(np.float32)[:, None]
+                i0 %= deck.length
+                i1 = (i0 + 1) % deck.length
             for s, (_name, sample) in enumerate(deck.stems):
                 g = gains[s]
                 target = targets[s]
@@ -345,7 +359,9 @@ class Bank:
                 gains[s] = g
                 if g <= 1e-4:
                     continue
-                if back:
+                if varispeed:
+                    data = sample[i0] * (1.0 - frac) + sample[i1] * frac
+                elif back:
                     before = here - n
                     if before >= 0:
                         data = sample[before:here][::-1]
@@ -366,7 +382,10 @@ class Bank:
             # Once a song has been pressed the playhead keeps running, even
             # while every stem is muted: releasing mutes, it does not pause.
             if deck.playing:
-                deck.pos = (here - n) % deck.length if back else (here + n) % deck.length
+                if varispeed:
+                    deck.pos = (deck.pos + (-n if back else n) * rate) % deck.length
+                else:
+                    deck.pos = (here - n) % deck.length if back else (here + n) % deck.length
 
 
 def _audio_files(folder: str) -> list[str]:

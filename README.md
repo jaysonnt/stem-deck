@@ -69,15 +69,16 @@ use your system volume to taste.
 | `[` / `]` (or ← / →) | previous / next preset |
 | `-` / `=` (or ↓ / ↑) | transpose the whole keyboard an octave |
 | Space (hold, piano/songs) | sustain pedal — notes ring until you let go |
-| Space (stems preset) | the same button as the dial press: play / mute the whole song |
-| dial (turn) | scrub every stem two seconds a notch (stems preset only) |
-| dial (press) | play / mute all six stems of the last song |
+| Space (stems preset) | play / mute the whole song |
+| Space while reversed | latch reverse on (it stays backwards after `'` is let go); Space again unlatches |
+| dial (turn) | stems: tape speed, 5% a notch (0.50x–2.00x, pitch and tempo together); piano: octave |
+| dial (press) | back to 1.00x if the speed moved, otherwise play / mute all stems of the last song |
 | kit preset (`z`…`/`) | drums: kick, 808, snare, clap, hat, open hat, rim, toms, crash |
 | kit preset (`q`…`p`) | the loop in key: four bass roots, six chord stabs |
 | stems preset (hold a key) | play that stem; release to stop it |
 | stems preset `←` / `→` (or `-` / `=`) | scrub every stem five seconds |
 | stems preset `[` / `]` | leave / change preset (silences the decks) |
-| `'` (apostrophe) | reverse playback: stems run backwards, new piano notes play tail first |
+| `'` (apostrophe, hold) | reverse while held: whatever is playing runs backwards, let go and it runs forward again |
 | Caps Lock | show the current preset in the terminal |
 | Esc | quit |
 
@@ -201,12 +202,18 @@ Tab, Enter and Backspace keys on the 65% board). Hold the ones you want
 and the song plays, past its end and back to the start, for as long as you keep
 holding — it never stops on its own. Rearrange any of it with `keys` (below).
 
-Press the dial — or Space, the big button by your thumb — to play (or mute
-again) every stem of the song you last touched, so the whole track comes out
-of one control. Turning the dial scrubs all stems two seconds a notch, the same
-timeline as `←` / `→`; outside the stems preset a notch does nothing, because
-there are no decks to move. Space only becomes that button on the stems preset:
-elsewhere it is still the sustain pedal.
+Space — the big button by your thumb — plays (or mutes again) every stem of
+the song you last touched. The dial press does the same, unless the dial has
+moved the speed, in which case the press snaps back to 1.00x first. Turning the
+dial is tape speed: 5% a notch, pitch and tempo together, every deck at once.
+The BOYI knob sends Volume Up / Down / Mute keys on the grabbed interface, so
+while pianokb runs the knob no longer changes system volume.
+
+Hold `'` and whatever is playing runs backwards; let go and it runs forwards
+from wherever the reverse left it. Tap Space while holding `'` and reverse
+latches: it stays backwards after you let go, until Space (or another `'`
+press-and-latch) turns it off. Space only toggles the song when nothing is
+reversed.
 
 Press a key once and that song's transport starts; it keeps running after you
 let go, and the stem just mutes. Press again and it unmutes wherever the song
@@ -215,7 +222,7 @@ of a song reads from one shared playhead, so they stay sample-locked, and all
 decks share the same timeline. `←` / `→` — or `-` / `=` on a board without
 arrows — scrub **all** stems five seconds at a time (wrapping at the ends) and
 print the new position; `[` / `]` leave the preset, silence the decks and reset
-the playheads. With reverse on (`'`) the decks run backwards and scrubbing
+the playheads. With reverse held or latched (`'`) the decks run backwards and scrubbing
 still moves along the timeline, so `→` stays "later in the song".
 
 ## Arranging the keys — the web UI

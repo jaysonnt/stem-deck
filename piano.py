@@ -41,7 +41,8 @@ CONFIG_PATH = os.path.join(HERE, "config.json")
 SR = 48_000
 BLOCK = 128              # ~2.7 ms per audio block: fast repeated notes stay tight
 RELEASE_S = 0.30         # key-up damping
-SCRUB_STEP = 2.0         # one notch of the dial, in seconds
+SPEED_STEP = 0.05        # one notch of the dial: tape speed, 5% a notch
+SPEED_MIN, SPEED_MAX = 0.5, 2.0
 NOW_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "now_playing.json")
 
 
@@ -575,9 +576,13 @@ def grab_targets(devs: list[evdev.InputDevice]) -> list[evdev.InputDevice]:
     return [d for d in devs if _is_keyboard(d)]
 
 
-# The knob reports as a wheel, and its push as a mouse button or mute key.
+# The BOYI knob turns as Volume Up / Volume Down key presses and pushes as Mute,
+# all on the grabbed keyboard interface. Other boards report a wheel and a
+# mouse button, so both are accepted.
 WHEEL_CODES = (ecodes.REL_WHEEL, ecodes.REL_HWHEEL)
-DIAL_BUTTONS = (ecodes.BTN_LEFT, ecodes.BTN_MIDDLE, ecodes.BTN_SIDE, ecodes.BTN_EXTRA)
+DIAL_UP = (ecodes.KEY_VOLUMEUP,)
+DIAL_DOWN = (ecodes.KEY_VOLUMEDOWN,)
+DIAL_BUTTONS = (ecodes.KEY_MUTE, ecodes.BTN_LEFT, ecodes.BTN_MIDDLE, ecodes.BTN_SIDE, ecodes.BTN_EXTRA)
 
 
 def grab(devs: list[evdev.InputDevice]) -> list[evdev.InputDevice]:
@@ -856,11 +861,12 @@ def show_preset(presets: list[Preset], index: int) -> None:
         print()
         print(colour("  press a key to start that stem · release mutes it", DIM))
         print(colour("  press again and the song carries on from where it is", DIM))
-        print(colour("  space or dial press = whole song · dial turn = scrub 2 s", DIM))
-        print(colour("  ← → or - = scrub 5 s   ' reverse   [ ] preset   esc quit", DIM))
+        print(colour("  hold ' = play backwards · space while reversed = stay reversed", DIM))
+        print(colour("  dial turn = tape speed · dial press = 1.00x, or whole song", DIM))
+        print(colour("  space = whole song   ← → or - = scrub 5 s   [ ] preset   esc quit", DIM))
         return
 
-    print(colour("  [ ] song   - = octave   space sustain   ' reverse   esc quit", DIM))
+    print(colour("  [ ] song   - = octave (or dial)   space sustain   hold ' reverse   esc quit", DIM))
 
 
 # --------------------------------------------------------------------------
@@ -902,7 +908,7 @@ def main() -> None:
 
     print(colour(f"\n  piano keyboard: {label}", BOLD))
     print(colour("  grabbing it now — it will not type anywhere while pianokb runs.", DIM))
-    print(colour("  dial: turn = scrub, press = whole song · space = same button.", DIM))
+    print(colour("  dial: turn = tape speed, press = 1.00x / whole song · hold ' = reverse.", DIM))
     grabbed = grab_when_idle(targets)
     if not grabbed:
         sys.exit("Could not grab the keyboard (is another program holding it?).")
@@ -940,13 +946,19 @@ def main() -> None:
 
     def now_snapshot() -> dict:
         preset = presets[preset_index]
-        base = {"active": False, "preset": preset.name, "updated": time.time()}
+        base = {
+            "active": False, "preset": preset.name, "updated": time.time(),
+            "reverse": reverse_held or reverse_latched,
+            "reverse_held": reverse_held, "reverse_latched": reverse_latched,
+            "speed": round(stem_bank.speed, 2) if stem_bank is not None else 1.0,
+        }
         if preset.stems is None or stem_bank is None or not stem_bank.decks:
             return base
         deck = stem_bank.decks[min(stem_bank.last, len(stem_bank.decks) - 1)]
         if not (deck.playing or any(deck.targets)):
             return base
         return {
+            **base,
             "active": True,
             "preset": preset.name,
             "song": deck.name,
@@ -971,18 +983,61 @@ def main() -> None:
                 pass
             stop.wait(0.5)
 
-    threading.Thread(target=now_writer, daemon=True).start()
-
+    # Reverse is a momentary button: hold ' and whatever is playing runs
+    # backwards, let go and it runs forwards again. Space while reversed latches
+    # it, so it stays backwards after ' is released; Space again unlatches.
+    reverse_held = False
+    reverse_latched = False
     reverse = False
 
-    def toggle_reverse() -> None:
+    def apply_reverse() -> None:
         nonlocal reverse
-        reverse = not reverse
+        want = reverse_held or reverse_latched
+        if want == reverse:
+            return
+        reverse = want
         piano.set_reverse(reverse)
         if stem_bank is not None:
             stem_bank.reverse = -1 if reverse else 1
-        print(colour("  reverse on — everything plays backwards" if reverse
-                     else "  reverse off", DIM))
+
+    def hold_reverse(down: bool) -> None:
+        nonlocal reverse_held
+        reverse_held = down
+        apply_reverse()
+        if down:
+            print(colour("  ◀◀ reverse (hold) — space keeps it", DIM))
+        elif reverse_latched:
+            print(colour("  ◀◀ reverse stays on (latched) — space releases it", DIM))
+        else:
+            print(colour("  ▶ forward", DIM))
+
+    def toggle_latch() -> None:
+        nonlocal reverse_latched
+        reverse_latched = not reverse_latched
+        apply_reverse()
+        print(colour("  ◀◀ reverse latched" if reverse_latched
+                     else ("  reverse unlatched — still held" if reverse_held
+                           else "  ▶ forward (unlatched)"), DIM))
+
+    def nudge_speed(notches: int) -> None:
+        if stem_bank is None:
+            return
+        speed = round(stem_bank.speed + notches * SPEED_STEP, 2)
+        stem_bank.speed = max(SPEED_MIN, min(SPEED_MAX, speed))
+        print(colour(f"  speed {stem_bank.speed:.2f}x", DIM))
+
+    def dial_press() -> None:
+        """Back to normal speed if the dial moved it, otherwise the whole song."""
+        if stem_bank is not None and abs(stem_bank.speed - 1.0) > 1e-6:
+            stem_bank.speed = 1.0
+            print(colour("  speed 1.00x", DIM))
+            return
+        toggle_song()
+
+    space_latched = False     # this Space press went to the reverse latch
+    unknown_seen: set[tuple[int, int]] = set()
+
+    threading.Thread(target=now_writer, daemon=True).start()
 
     def keymap() -> dict[int, int]:
         return {code: midi + 12 * octave_shift for code, midi in presets[preset_index].keymap().items()}
@@ -1130,26 +1185,50 @@ def main() -> None:
                     break
 
                 for event in batch:
+                    def dial_turn(notches: int) -> None:
+                        if presets[preset_index].stems is not None:
+                            nudge_speed(notches)
+                        else:
+                            shift_octave(1 if notches > 0 else -1)
+
                     if event.type == ecodes.EV_REL:
-                        # the knob turns as a wheel, one notch per event
+                        # wheel-style knobs: one notch per event
                         if event.code in WHEEL_CODES and event.value:
-                            if presets[preset_index].stems is not None:
-                                scrub(SCRUB_STEP if event.value > 0 else -SCRUB_STEP)
+                            dial_turn(1 if event.value > 0 else -1)
                         continue
                     if event.type != ecodes.EV_KEY:
                         continue
-                    if event.value == 2:
-                        continue
                     code = event.code
 
-                    if event.value == 1 and (code == ecodes.KEY_MUTE or code in DIAL_BUTTONS):
-                        toggle_song()
+                    # The BOYI dial is Volume Up / Down keys: a fast spin
+                    # auto-repeats, so repeats count as notches too.
+                    if code in DIAL_UP or code in DIAL_DOWN:
+                        if event.value in (1, 2):
+                            dial_turn(1 if code in DIAL_UP else -1)
+                        continue
+                    if event.value == 2:
+                        continue
+
+                    if code in DIAL_BUTTONS:
+                        if event.value == 1:
+                            dial_press()
                         continue
 
                     if code == ecodes.KEY_ESC and event.value == 1:
                         running = False
                         break
+                    if code == ecodes.KEY_APOSTROPHE:
+                        hold_reverse(event.value == 1)
+                        continue
                     if code == ecodes.KEY_SPACE:
+                        # Space while reversed (held or latched) is the latch.
+                        if event.value == 1 and (reverse_held or reverse_latched):
+                            space_latched = True
+                            toggle_latch()
+                            continue
+                        if event.value == 0 and space_latched:
+                            space_latched = False
+                            continue
                         # On the stems preset Space is the big button beside the
                         # dial: one press plays or mutes the whole song.
                         if presets[preset_index].stems is not None:
@@ -1165,9 +1244,11 @@ def main() -> None:
                             f"{presets[preset_index].name}", DIM))
                         continue
 
-                    if code == ecodes.KEY_APOSTROPHE and event.value == 1:
-                        toggle_reverse()
-                        continue
+                    if (code not in CHAR_OF and code not in (
+                            ecodes.KEY_LEFT, ecodes.KEY_RIGHT, ecodes.KEY_UP, ecodes.KEY_DOWN)
+                            and (event.type, code) not in unknown_seen):
+                        unknown_seen.add((event.type, code))
+                        print(colour(f"  (unmapped key {ecodes.KEY.get(code, code)})", DIM))
 
                     if presets[preset_index].stems is not None and stem_bank is not None:
                         if event.value == 0:

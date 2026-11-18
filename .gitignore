@@ -10,3 +10,4 @@ __pycache__/
 
 # stray logs
 *.log
+control.jsonl

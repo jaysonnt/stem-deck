@@ -15,11 +15,17 @@ Serves a small static app on 127.0.0.1 and a JSON API:
     POST /api/restart               restart the pianokb service
     POST /api/bench                 {"song"} - take a song off the board
     POST /api/unbench               {"song"} - put it back
+    POST /api/control               {"cmd": ...} - drive the live engine (see CONTROL_CMDS)
+
+Binds to PIANOKB_UI_HOST (default 127.0.0.1). The unit sets 0.0.0.0 so the
+command-center console can reach it over Tailscale; requests from anything but
+loopback and the tailnet range (100.64.0.0/10) are refused either way.
 """
 
 from __future__ import annotations
 
 import glob
+import ipaddress
 import json
 import os
 import re
@@ -46,7 +52,12 @@ BENCH_DIR = os.path.join(STEMS_DIR, ".bench")
 NOW_FILE = os.path.join(PKG, "now_playing.json")
 VENV_PY = os.path.join(PKG, ".venv", "bin", "python")
 MODEL = os.environ.get("PIANOKB_MODEL", "htdemucs_6s")
-HOST = "127.0.0.1"
+HOST = os.environ.get("PIANOKB_UI_HOST", "127.0.0.1")
+CONTROL_FILE = os.path.join(PKG, "control.jsonl")
+CONTROL_CMDS = {"latch", "speed", "scrub", "song", "stem", "seek"}
+_ALLOWED_NETS = [ipaddress.ip_network(n) for n in
+                 ("127.0.0.0/8", "::1/128", "100.64.0.0/10", "fd7a:115c:a1e0::/48")]
+_control_lock = threading.Lock()
 PORT = int(os.environ.get("PIANOKB_UI_PORT", "8765"))
 MAX_UPLOAD = 800 << 20
 SIX_STEMS = ("vocals", "drums", "bass", "other", "piano", "guitar")
@@ -183,6 +194,36 @@ def now_state() -> dict:
     except (OSError, ValueError):
         pass
     return {"active": False}
+
+
+def send_control(body: dict) -> dict:
+    """Queue one command for the engine, which tails control.jsonl."""
+    cmd = str(body.get("cmd", ""))
+    if cmd not in CONTROL_CMDS:
+        raise ValueError(f"unknown command {cmd!r}")
+    msg: dict = {"cmd": cmd, "at": time.time()}
+    if cmd == "latch":
+        msg["on"] = bool(body.get("on"))
+    elif cmd == "speed":
+        msg["value"] = max(0.5, min(2.0, float(body.get("value", 1.0))))
+    elif cmd in ("scrub", "seek"):
+        msg["seconds"] = max(-3600.0, min(3600.0, float(body.get("seconds", 0.0))))
+    if cmd in ("song", "stem", "seek"):
+        msg["song"] = str(body.get("song", ""))[:200]
+    if cmd == "stem":
+        msg["stem"] = str(body.get("stem", ""))[:60]
+        msg["on"] = bool(body.get("on"))
+    if cmd == "song" and "on" in body:
+        msg["on"] = bool(body.get("on"))
+    with _control_lock:
+        try:
+            if os.path.getsize(CONTROL_FILE) > (256 << 10):
+                os.truncate(CONTROL_FILE, 0)     # engine notices and rewinds
+        except OSError:
+            pass
+        with open(CONTROL_FILE, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(msg) + "\n")
+    return msg
 
 
 def board_state() -> dict:
@@ -438,19 +479,37 @@ class Handler(BaseHTTPRequestHandler):
         os.replace(part, dest)
 
     # routes ----------------------------------------------------------------
+    def allowed(self) -> bool:
+        try:
+            ip = ipaddress.ip_address(self.client_address[0].split("%")[0])
+        except ValueError:
+            return False
+        if getattr(ip, "ipv4_mapped", None):
+            ip = ip.ipv4_mapped
+        if any(ip in net for net in _ALLOWED_NETS):
+            return True
+        self.send_json({"ok": False, "error": "forbidden"}, 403)
+        return False
+
     def do_GET(self) -> None:
+        if not self.allowed():
+            return
         try:
             self.route_get(urlparse(self.path).path)
         except Exception as exc:
             self.fail(exc)
 
     def do_POST(self) -> None:
+        if not self.allowed():
+            return
         try:
             self.route_post(urlparse(self.path).path)
         except Exception as exc:
             self.fail(exc)
 
     def do_PUT(self) -> None:
+        if not self.allowed():
+            return
         try:
             self.route_put(urlparse(self.path).path)
         except Exception as exc:
@@ -481,6 +540,9 @@ class Handler(BaseHTTPRequestHandler):
                 stems.save_keymap(clean)
             schedule_restart()
             return self.send_json({"ok": True, "layout": clean})
+
+        if path == "/api/control":
+            return self.send_json({"ok": True, "sent": send_control(self.json_body())})
 
         if path == "/api/restart":
             restart_engine()

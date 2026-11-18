@@ -952,6 +952,22 @@ def main() -> None:
             "reverse_held": reverse_held, "reverse_latched": reverse_latched,
             "speed": round(stem_bank.speed, 2) if stem_bank is not None else 1.0,
         }
+        if stem_bank is not None:
+            base["last"] = stem_bank.last
+            base["decks"] = [
+                {
+                    "name": d.name,
+                    "playing": bool(d.playing),
+                    "position": round(d.pos / SR, 3),
+                    "duration": round(d.length / SR, 3),
+                    "stems": [
+                        {"name": name, "on": d.targets[s] > 0.5,
+                         "key": next((ch for ch, k in keys if k == s), "")}
+                        for s, (name, _sample) in enumerate(d.stems)
+                    ],
+                }
+                for d, keys in zip(stem_bank.decks, stem_bank.keys)
+            ]
         if preset.stems is None or stem_bank is None or not stem_bank.decks:
             return base
         deck = stem_bank.decks[min(stem_bank.last, len(stem_bank.decks) - 1)]
@@ -981,7 +997,7 @@ def main() -> None:
                 os.replace(tmp, NOW_FILE)
             except OSError:
                 pass
-            stop.wait(0.5)
+            stop.wait(0.25)
 
     # Reverse is a momentary button: hold ' and whatever is playing runs
     # backwards, let go and it runs forwards again. Space while reversed latches
@@ -1118,6 +1134,87 @@ def main() -> None:
         for s in range(len(deck.targets)):
             deck.targets[s] = 1.0 if on else 0.0
         print(colour(f"  {'all stems playing' if on else 'stems muted'} — {deck.name}", DIM))
+
+    def deck_named(name: str) -> int | None:
+        if stem_bank is None:
+            return None
+        return next((i for i, d in enumerate(stem_bank.decks) if d.name == name), None)
+
+    def apply_control(msg: dict) -> None:
+        """One command from the web dashboard (ui/server.py → control.jsonl)."""
+        nonlocal reverse_latched
+        cmd = msg.get("cmd")
+        if cmd == "latch":
+            reverse_latched = bool(msg.get("on"))
+            apply_reverse()
+            print(colour(f"  dashboard: reverse {'latched' if reverse_latched else 'off'}", DIM))
+            return
+        if stem_bank is None or not stem_bank.decks:
+            return
+        if cmd == "speed":
+            stem_bank.speed = max(SPEED_MIN, min(SPEED_MAX, float(msg.get("value", 1.0))))
+            print(colour(f"  dashboard: speed {stem_bank.speed:.2f}x", DIM))
+        elif cmd == "scrub":
+            scrub(float(msg.get("seconds", 0.0)))
+        elif cmd == "seek":
+            target = int(float(msg.get("seconds", 0.0)) * SR)
+            for d in stem_bank.decks:
+                if d.length:
+                    d.pos = target % d.length
+        elif cmd == "song":
+            d = deck_named(str(msg.get("song", "")))
+            if d is None:
+                return
+            stem_bank.last = d
+            if "on" in msg:
+                deck = stem_bank.decks[d]
+                deck.playing = True
+                for s in range(len(deck.targets)):
+                    deck.targets[s] = 1.0 if msg["on"] else 0.0
+            else:
+                toggle_song()
+        elif cmd == "stem":
+            d = deck_named(str(msg.get("song", "")))
+            if d is None:
+                return
+            deck = stem_bank.decks[d]
+            s = next((i for i, (n, _x) in enumerate(deck.stems) if n == msg.get("stem")), None)
+            if s is None:
+                return
+            deck.targets[s] = 1.0 if msg.get("on") else 0.0
+            deck.playing = True
+            stem_bank.last = d
+
+    def control_reader() -> None:
+        path = os.path.join(HERE, "control.jsonl")
+        try:
+            offset = os.path.getsize(path)      # ignore commands from before startup
+        except OSError:
+            offset = 0
+        while not stop.is_set():
+            try:
+                size = os.path.getsize(path)
+                if size < offset:               # the UI truncated it
+                    offset = 0
+                if size > offset:
+                    with open(path, "r", encoding="utf-8") as fh:
+                        fh.seek(offset)
+                        chunk = fh.read()
+                    # only consume whole lines
+                    end = chunk.rfind("\n") + 1
+                    offset += len(chunk[:end].encode("utf-8"))
+                    for line in chunk[:end].splitlines():
+                        try:
+                            msg = json.loads(line)
+                            if isinstance(msg, dict) and time.time() - float(msg.get("at", 0)) < 10:
+                                apply_control(msg)
+                        except (ValueError, TypeError):
+                            continue
+            except OSError:
+                pass
+            stop.wait(0.05)
+
+    threading.Thread(target=control_reader, daemon=True).start()
 
     selector = selectors.DefaultSelector()
     running = True

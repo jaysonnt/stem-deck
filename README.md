@@ -1,4 +1,4 @@
-# pianokb
+# Stem Deck
 
 Turns one spare keyboard into a piano that is always ready — while your main
 keyboard keeps typing normally.
@@ -44,12 +44,15 @@ reverse and the dial: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ### The local web UI
 
-![pianokb web UI: drag keys to rearrange, add songs from files or links](docs/screenshots/local-web-ui.png)
+![Stem Deck web UI: drag keys to rearrange, add songs from files or links](docs/screenshots/local-web-ui.png)
 
 `keys` opens it: drag stems between keys, bench songs, and add new ones from a
 file or a YouTube link. Demucs splits them locally (details below).
 
 ## Repository layout
+
+The project started life as `pianokb` (a spare keyboard as a piano), and that
+name survives in the systemd units, the install folder and the commands below.
 
 | path | what |
 | --- | --- |
@@ -62,7 +65,7 @@ file or a YouTube link. Demucs splits them locally (details below).
 | `docs/` | architecture notes, diagrams and screenshots |
 
 The piano keyboard is **grabbed at the kernel level** (`EVIOCGRAB`). While
-`pianokb` runs, that keyboard's key events are delivered only to `pianokb`:
+Stem Deck runs, that keyboard's key events are delivered only to it:
 no typing, no shortcuts, no window focus games, nothing leaks to your desktop.
 The other keyboard is untouched, so you can keep working while you play.
 
@@ -239,7 +242,7 @@ write). MP3 frames carry padding that can shift one stem a few milliseconds
 against the others, which is exactly what breaks the lock between parts.
 
 The **Stems** preset appears automatically once at least one song is there, and
-pianokb starts on it (so keys play stems instead of piano notes) — `[` / `]`
+Stem Deck starts on it (so keys play stems instead of piano notes) — `[` / `]`
 go back to the piano and songs. The layout is yours to arrange though:
 
 | key | stem |
@@ -265,7 +268,7 @@ the song you last touched. The dial press does the same, unless the dial has
 moved the speed, in which case the press snaps back to 1.00x first. Turning the
 dial is tape speed: 5% a notch, pitch and tempo together, every deck at once.
 The BOYI knob sends Volume Up / Down / Mute keys on the grabbed interface, so
-while pianokb runs the knob no longer changes system volume.
+while Stem Deck runs the knob no longer changes system volume.
 
 Hold `'` and whatever is playing runs backwards; let go and it runs forwards
 from wherever the reverse left it. Tap Space while holding `'` and reverse
@@ -296,7 +299,7 @@ works from any directory. It starts the UI service if needed and opens it.
 The page draws the four rows with every key tagged by the stem it plays,
 coloured per song. Drag a key onto another to move it, or swap the two if the
 target is taken; click one key and then another to do the same. Every move is
-saved to `pianokb/keymap.json` and pianokb restarts with it a moment later.
+saved to `pianokb/keymap.json` and the engine restarts with it a moment later.
 `Reset layout` returns to the default blocks. The UI never grabs the keyboard,
 so the spare board keeps working while it is open.
 
@@ -375,14 +378,19 @@ journalctl --user -u pianokb -f     # watch what it is doing
 
 ## Notes
 
-- The grabbed keyboard is completely unavailable to the desktop while pianokb
+- The grabbed keyboard is completely unavailable to the desktop while Stem Deck
   runs. Pick the spare one, not the keyboard you type on.
 - Unplugging the piano keyboard is safe: it releases everything and re-grabs
   automatically when the keyboard comes back (the service waits for it).
-- Before grabbing, pianokb waits until no key is held. Grabbing mid-hold would
+- Before grabbing, Stem Deck waits until no key is held. Grabbing mid-hold would
   hide that key's release from the desktop and leave it stuck for every
   keyboard, so the wait has no timeout; the log says when it is waiting.
 - If audio ever stops (PipeWire restart, sink change), the stream reopens on
-  its own; there is no need to restart pianokb.
+  its own; there is no need to restart the engine.
 - Key events trigger only on press, so holding a key rings the note out; the
   note is damped when you release it (unless Space is held).
+
+## License
+
+MIT — see [LICENSE](LICENSE). Audio you split or load is not covered by it;
+stems stay outside the repository (`stems/` is never committed).

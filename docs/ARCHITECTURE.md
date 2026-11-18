@@ -1,4 +1,4 @@
-# How pianokb works
+# How Stem Deck works
 
 Three processes and two files carry everything. The engine owns the keyboard
 and the audio; the UI server never touches either, it only reads a status file
@@ -8,7 +8,7 @@ and appends to a command file.
 
 ```mermaid
 flowchart LR
-    subgraph host["pianokb host (Linux, PipeWire)"]
+    subgraph host["Stem Deck host (Linux, PipeWire)"]
         kb["BOYI 60% keyboard<br/>/dev/input/event*"]
         subgraph engine["piano.py — pianokb.service"]
             input["input loop<br/>EVIOCGRAB"]
@@ -105,7 +105,7 @@ Piano notes started while reversed play tail first.
 
 The BOYI knob is not a wheel. It sends **Volume Up / Volume Down** key presses
 when turned and **Mute** when pressed, all on the keyboard interface the
-engine has grabbed, so while pianokb runs the knob no longer changes the
+engine has grabbed, so while Stem Deck runs the knob no longer changes the
 system volume.
 
 | dial | stems preset | piano / song presets |

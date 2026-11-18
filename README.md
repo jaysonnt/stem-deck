@@ -3,6 +3,64 @@
 Turns one spare keyboard into a piano that is always ready — while your main
 keyboard keeps typing normally.
 
+It is also a **live stem player**: split any song into vocals, drums, bass,
+other, piano and guitar, and every stem gets its own key. Hold keys to bring
+parts in and out, hold `'` to run the whole thing backwards, and turn the
+keyboard's dial to slow it down or speed it up like a turntable. Six songs fit
+side by side on one 60% board.
+
+![The Stem Deck dashboard while a song plays at 0.90x](docs/screenshots/console-stem-deck.png)
+
+*The Stem Deck dashboard (see [`integrations/command-center`](integrations/command-center/))
+during real playback: every stem of "Ski" lit on its key, the dial at 0.90x.*
+
+## At a glance
+
+| control | stems preset | piano and song presets |
+| --- | --- | --- |
+| any mapped key | hold to play that stem, release to mute it | play a note |
+| `'` (hold) | everything plays **backwards** until you let go | new notes play tail first |
+| Space while reversed | **latch** reverse so it stays on; Space again releases it | same |
+| Space | play / mute the whole song | sustain pedal |
+| dial turn | **tape speed** 0.50x – 2.00x, 5% a notch | octave up / down |
+| dial press | back to 1.00x, or play / mute the whole song | same |
+| `-` `=` / `←` `→` | scrub every deck 5 s | octave |
+| `[` `]` | change preset | change preset |
+| Esc | quit and give the keyboard back | same |
+
+```mermaid
+flowchart LR
+    kb["spare keyboard<br/>(grabbed)"] --> engine["piano.py<br/>engine"]
+    stems[("stems/<br/>memory-mapped")] --> engine
+    engine --> pw["PipeWire<br/>~13 ms"]
+    engine -- now_playing.json --> ui["ui/server.py<br/>:8765"]
+    ui -- control.jsonl --> engine
+    ui --> web["local web UI"]
+    ui -- tailnet --> console["Stem Deck tab"]
+```
+
+How it all fits together, with sequence and state diagrams for key presses,
+reverse and the dial: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+
+### The local web UI
+
+![pianokb web UI: drag keys to rearrange, add songs from files or links](docs/screenshots/local-web-ui.png)
+
+`keys` opens it: drag stems between keys, bench songs, and add new ones from a
+file or a YouTube link. Demucs splits them locally (details below).
+
+## Repository layout
+
+| path | what |
+| --- | --- |
+| `piano.py` | the engine: grabs the keyboard, synthesises the piano, mixes the stems, runs reverse and tape speed |
+| `stems.py` | stem decks: discovery, caching, key assignment, the shared-playhead mixer |
+| `songs.py`, `beats.py` | song presets (scales, melodies, chord loops) and the beat kit |
+| `map.py`, `menu` | the terminal key mapper and the `keys` launcher |
+| `ui/` | the web UI server and its static app, plus the Demucs venv installer |
+| `integrations/command-center/` | the Stem Deck dashboard for a separate Next.js + FastAPI console |
+| `docs/` | architecture notes, diagrams and screenshots |
+
 The piano keyboard is **grabbed at the kernel level** (`EVIOCGRAB`). While
 `pianokb` runs, that keyboard's key events are delivered only to `pianokb`:
 no typing, no shortcuts, no window focus games, nothing leaks to your desktop.

@@ -316,9 +316,9 @@ are on, and the shared playhead.
 already have, or a link. For a link, yt-dlp downloads the audio first and the
 same split runs on it, so a YouTube URL becomes six stems in one step. A
 progress bar and the splitter's log show what is happening, and the song
-appears on the board when it finishes. A ten-minute
-mix takes a few minutes on CPU; the first split also downloads the ~80 MB
-model. This is the local counterpart of the online BS-Roformer split: same six
+appears on the board when it finishes. A 3-minute song takes about 4 seconds
+on an RTX 5080 (about 23 s on a 16-core CPU), and the GPU memory is freed as
+soon as the split ends. The first split also downloads the ~80 MB model. This is the local counterpart of the online BS-Roformer split: same six
 stems, no upload, but RoFormer models usually separate a little cleaner.
 
 The splitter and yt-dlp live in `pianokb/.venv` and are installed once:
